@@ -306,6 +306,47 @@ def update_task(task_id):
     # Return updated task
     return jsonify(task), 200
 
+@app.route('/tasks/<int:task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    """
+    Delete a task by ID
+    ---
+    parameters:
+      - name: task_id
+        in: path
+        type: integer
+        required: true
+        description: The task ID
+    responses:
+      204:
+        description: Task deleted successfully (no content)
+      404:
+        description: Task not found
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+          example:
+            error: "Task 999 not found"
+    """
+    # Find the task
+    task = None
+    for t in tasks:
+        if t['id'] == task_id:
+            task = t
+            break
+    
+    # If task doesn't exist
+    if not task:
+        return jsonify({"error": f"Task {task_id} not found"}), 404
+    
+    # Remove the task
+    tasks.remove(task)
+    
+    # Return 204 No Content (empty body)
+    return '', 204
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
