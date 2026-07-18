@@ -4,14 +4,12 @@ from flasgger import Swagger
 app = Flask(__name__)
 swagger = Swagger(app)
 
-# In-memory task storage
 tasks = [
     {"id": 1, "title": "Buy milk", "done": False},
     {"id": 2, "title": "Walk the dog", "done": True},
     {"id": 3, "title": "Do homework", "done": False}
 ]
 
-# Track next available ID
 next_id = 4
 
 
@@ -210,6 +208,103 @@ def create_task():
     
     
     return jsonify(new_task), 201
+
+
+
+
+@app.route('/tasks/<int:task_id>', methods=['PUT'])
+def update_task(task_id):
+    """
+    Update a task by ID
+    ---
+    parameters:
+      - name: task_id
+        in: path
+        type: integer
+        required: true
+        description: The task ID
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+              description: The task title
+              example: "Buy milk"
+            done:
+              type: boolean
+              description: Task completion status
+              example: true
+    responses:
+      200:
+        description: Task updated successfully
+        schema:
+          type: object
+          properties:
+            id:
+              type: integer
+            title:
+              type: string
+            done:
+              type: boolean
+          example:
+            id: 1
+            title: "Buy milk"
+            done: true
+      400:
+        description: Bad request - invalid input
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+          example:
+            error: "Title cannot be empty"
+      404:
+        description: Task not found
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+          example:
+            error: "Task 999 not found"
+    """
+    # Find the task
+    task = None
+    for t in tasks:
+        if t['id'] == task_id:
+            task = t
+            break
+    
+    # If task doesn't exist
+    if not task:
+        return jsonify({"error": f"Task {task_id} not found"}), 404
+    
+    # Get JSON data
+    data = request.get_json()
+    
+    # Validation: Check if JSON was sent
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
+    
+    # Update title if provided
+    if 'title' in data:
+        title = data['title']
+        if not isinstance(title, str) or not title.strip():
+            return jsonify({"error": "Title cannot be empty or whitespace"}), 400
+        task['title'] = title.strip()
+    
+    # Update done if provided
+    if 'done' in data:
+        if not isinstance(data['done'], bool):
+            return jsonify({"error": "Done must be a boolean (true/false)"}), 400
+        task['done'] = data['done']
+    
+    # Return updated task
+    return jsonify(task), 200
 
 
 if __name__ == '__main__':
