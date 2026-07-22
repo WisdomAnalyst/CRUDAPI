@@ -5,6 +5,36 @@ import sqlite3
 app = Flask(__name__)
 swagger = Swagger(app)
 
+def init_db():
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done BOOLEAN DEFAULT 0
+        )
+    ''')
+    
+    cursor.execute('SELECT COUNT(*) FROM tasks')
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany(
+            'INSERT INTO tasks (title, done) VALUES (?, ?)',
+            [
+                ('Buy milk', 0),
+                ('Walk the dog', 1),
+                ('Do homework', 0)
+            ]
+        )
+    
+    conn.commit()
+    conn.close()
+
+init_db()
+
+
+
 tasks = [
     {"id": 1, "title": "Buy milk", "done": False},
     {"id": 2, "title": "Walk the dog", "done": True},
@@ -131,6 +161,37 @@ def get_task(task_id):
 
 @app.route('/tasks', methods=['POST'])
 def create_task():
+    data = request.get_json()
+    
+    # Validation 
+    if not data or 'title' not in data:
+        return jsonify({"error": "Title is required"}), 400
+    
+    title = data['title'].strip()
+    if not title:
+        return jsonify({"error": "Title cannot be empty"}), 400
+    
+    # INSERT into database
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO tasks (title, done) VALUES (?, ?)',
+        (title, False)
+    )
+    conn.commit()
+    
+    # Get the ID the database assigned
+    new_id = cursor.lastrowid
+    conn.close()
+    
+    return jsonify({
+        'id': new_id,
+        'title': title,
+        'done': False
+    }), 201
+    
+      
+      
     """
     Create a new task
     ---
@@ -351,3 +412,5 @@ def delete_task(task_id):
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
+    
+    
