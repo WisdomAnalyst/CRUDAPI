@@ -1,0 +1,36 @@
+# task 0
+
+@app.route('/tasks', methods=['POST'])
+def create_task():
+    data = request.get_json()
+    
+    # Validation 
+    if not data or 'title' not in data:
+        return jsonify({"error": "Title is required"}), 400
+    
+    title = data['title'].strip()
+    if not title:
+        return jsonify({"error": "Title cannot be empty"}), 400
+    
+    # Optional done field (defaults to False/0)
+    done = 1 if data.get('done', False) else 0
+    
+    try:
+        # INSERT into database with context manager
+        with sqlite3.connect('tasks.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO tasks (title, done) VALUES (?, ?)',
+                (title, done)  # Use 0 or 1, not False/True
+            )
+            conn.commit()
+            new_id = cursor.lastrowid
+        
+        return jsonify({
+            'id': new_id,
+            'title': title,
+            'done': bool(done)  # Convert back to boolean for JSON
+        }), 201
+        
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
