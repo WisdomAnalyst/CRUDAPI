@@ -34,3 +34,51 @@ def create_task():
         
     except sqlite3.Error as e:
         return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+@app.route('/tasks', methods=['GET'])
+def get_tasks():
+    try:
+        with sqlite3.connect('tasks.db') as conn:
+            conn.row_factory = sqlite3.Row  # Access columns by name
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, title, done FROM tasks')
+            rows = cursor.fetchall()
+        
+        tasks = [
+            {
+                'id': row['id'],
+                'title': row['title'],
+                'done': bool(row['done'])  # Convert 0/1 to false/true
+            }
+            for row in rows
+        ]
+        
+        return jsonify(tasks), 200
+    
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500 
+
+
+    @app.route('/tasks/<int:task_id>', methods=['GET'])
+def get_task(task_id):
+    try:
+        with sqlite3.connect('tasks.db') as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT id, title, done FROM tasks WHERE id = ?',
+                (task_id,)
+            )
+            row = cursor.fetchone()
+        
+        if row is None:
+            return jsonify({"error": "Task not found"}), 404
+        
+        return jsonify({
+            'id': row['id'],
+            'title': row['title'],
+            'done': bool(row['done'])
+        }), 200
+    
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500       

@@ -1,11 +1,16 @@
 from flask import Flask, jsonify, request
 from flasgger import Swagger
 import sqlite3
+from contextlib import contextmanager
 
 app = Flask(__name__)
 swagger = Swagger(app)
 
+# ADD THIS LINE:
+MAX_TITLE_LENGTH = 200
+
 def init_db():
+    """Initialize the database with tasks table and sample data"""
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
     
@@ -17,8 +22,9 @@ def init_db():
         )
     ''')
     
+    # Count rows first
     cursor.execute('SELECT COUNT(*) FROM tasks')
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone()[0] == 0: 
         cursor.executemany(
             'INSERT INTO tasks (title, done) VALUES (?, ?)',
             [
@@ -32,16 +38,6 @@ def init_db():
     conn.close()
 
 init_db()
-
-
-
-tasks = [
-    {"id": 1, "title": "Buy milk", "done": False},
-    {"id": 2, "title": "Walk the dog", "done": True},
-    {"id": 3, "title": "Do homework", "done": False}
-]
-
-next_id = 4
 
 
 @app.route('/')
@@ -112,6 +108,14 @@ def get_all_tasks():
               title: "Buy milk"
               done: false
     """
+    conn = sqlite3.connect('tasks.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, title, done FROM tasks ORDER BY id')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    tasks = [dict(row) for row in rows]
     return jsonify(tasks)
 
 
@@ -152,48 +156,23 @@ def get_task(task_id):
           example:
             error: "Task 999 not found"
     """
-    for task in tasks:
-        if task['id'] == task_id:
-            return jsonify(task)
+    conn = sqlite3.connect('tasks.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, title, done FROM tasks WHERE id = ?', (task_id,))
+    row = cursor.fetchone()
+    conn.close()
     
-    return jsonify({"error": f"Task {task_id} not found"}), 404
+    if row is None:
+        return jsonify({"error": f"Task {task_id} not found"}), 404
+    
+    return jsonify(dict(row))
 
 
 @app.route('/tasks', methods=['POST'])
 def create_task():
-    data = request.get_json()
-    
-    # Validation 
-    if not data or 'title' not in data:
-        return jsonify({"error": "Title is required"}), 400
-    
-    title = data['title'].strip()
-    if not title:
-        return jsonify({"error": "Title cannot be empty"}), 400
-    
-    # INSERT into database
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute(
-        'INSERT INTO tasks (title, done) VALUES (?, ?)',
-        (title, False)
-    )
-    conn.commit()
-    
-    # Get the ID the database assigned
-    new_id = cursor.lastrowid
-    conn.close()
-    
-    return jsonify({
-        'id': new_id,
-        'title': title,
-        'done': False
-    }), 201
-    
-      
-      
     """
-    Create a new task
+    Create a new task and insert into database
     ---
     parameters:
       - name: body
@@ -206,17 +185,21 @@ def create_task():
           properties:
             title:
               type: string
-              description: The task title
-              example: "Buy milk"
+              description: The task title (required, max 200 characters)
+              example: "Buy groceries"
+            done:
+              type: boolean
+              description: Task completion status (optional, defaults to false)
+              example: false
     responses:
       201:
-        description: Task created successfully
+        description: Task created successfully and inserted into database
         schema:
           type: object
           properties:
             id:
               type: integer
-              description: Unique task ID
+              description: Unique task ID (auto-generated)
             title:
               type: string
               description: Task title
@@ -225,7 +208,7 @@ def create_task():
               description: Task completion status
           example:
             id: 4
-            title: "Buy milk"
+            title: "Buy groceries"
             done: false
       400:
         description: Bad request - invalid input
@@ -236,43 +219,16 @@ def create_task():
               type: string
           example:
             error: "Title is required"
+      500:
+        description: Database error
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
     """
-    global next_id
-    
-    
-    data = request.get_json()
-    
-    
-    if not data:
-        return jsonify({"error": "Request body must be JSON"}), 400
-    
-    
-    if 'title' not in data:
-        return jsonify({"error": "Title is required"}), 400
-    
-    
-    title = data['title']
-    if not isinstance(title, str) or not title.strip():
-        return jsonify({"error": "Title cannot be empty or whitespace"}), 400
-    
-    
-    new_task = {
-        "id": next_id,
-        "title": title.strip(),
-        "done": False
-    }
-    
-    
-    tasks.append(new_task)
-    
-    
-    next_id += 1
-    
-    
-    return jsonify(new_task), 201
-
-
-
+    # We'll fill this in next
+    pass
 
 @app.route('/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
@@ -334,39 +290,51 @@ def update_task(task_id):
           example:
             error: "Task 999 not found"
     """
-    # Find the task
-    task = None
-    for t in tasks:
-        if t['id'] == task_id:
-            task = t
-            break
+    conn = sqlite3.connect('tasks.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, title, done FROM tasks WHERE id = ?', (task_id,))
+    row = cursor.fetchone()
     
-    # If task doesn't exist
-    if not task:
+    if row is None:
+        conn.close()
         return jsonify({"error": f"Task {task_id} not found"}), 404
     
-    # Get JSON data
     data = request.get_json()
     
-    # Validation: Check if JSON was sent
     if not data:
+        conn.close()
         return jsonify({"error": "Request body must be JSON"}), 400
     
-    # Update title if provided
+    new_title = row['title']
+    new_done = row['done']
+    
     if 'title' in data:
         title = data['title']
         if not isinstance(title, str) or not title.strip():
+            conn.close()
             return jsonify({"error": "Title cannot be empty or whitespace"}), 400
-        task['title'] = title.strip()
+        new_title = title.strip()
     
-    # Update done if provided
     if 'done' in data:
         if not isinstance(data['done'], bool):
+            conn.close()
             return jsonify({"error": "Done must be a boolean (true/false)"}), 400
-        task['done'] = data['done']
+        new_done = data['done']
     
-    # Return updated task
-    return jsonify(task), 200
+    cursor.execute(
+        'UPDATE tasks SET title = ?, done = ? WHERE id = ?',
+        (new_title, int(new_done), task_id)
+    )
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'id': task_id,
+        'title': new_title,
+        'done': bool(new_done)
+    }), 200
+
 
 @app.route('/tasks/<int:task_id>', methods=['DELETE'])
 def delete_task(task_id):
@@ -392,25 +360,21 @@ def delete_task(task_id):
           example:
             error: "Task 999 not found"
     """
-    # Find the task
-    task = None
-    for t in tasks:
-        if t['id'] == task_id:
-            task = t
-            break
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM tasks WHERE id = ?', (task_id,))
+    row = cursor.fetchone()
     
-    # If task doesn't exist
-    if not task:
+    if row is None:
+        conn.close()
         return jsonify({"error": f"Task {task_id} not found"}), 404
     
-    # Remove the task
-    tasks.remove(task)
+    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+    conn.commit()
+    conn.close()
     
-    # Return 204 No Content (empty body)
     return '', 204
 
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
-    
-    
