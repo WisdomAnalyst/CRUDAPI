@@ -298,50 +298,34 @@ def update_task(task_id):
           example:
             error: "Task 999 not found"
     """
-    conn = sqlite3.connect('tasks.db')
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, title, done FROM tasks WHERE id = ?', (task_id,))
-    row = cursor.fetchone()
-    
-    if row is None:
-        conn.close()
-        return jsonify({"error": f"Task {task_id} not found"}), 404
-    
-    data = request.get_json()
-    
-    if not data:
-        conn.close()
-        return jsonify({"error": "Request body must be JSON"}), 400
-    
-    new_title = row['title']
-    new_done = row['done']
-    
-    if 'title' in data:
-        title = data['title']
-        if not isinstance(title, str) or not title.strip():
-            conn.close()
-            return jsonify({"error": "Title cannot be empty or whitespace"}), 400
-        new_title = title.strip()
-    
-    if 'done' in data:
-        if not isinstance(data['done'], bool):
-            conn.close()
-            return jsonify({"error": "Done must be a boolean (true/false)"}), 400
-        new_done = data['done']
-    
-    cursor.execute(
-        'UPDATE tasks SET title = ?, done = ? WHERE id = ?',
-        (new_title, int(new_done), task_id)
-    )
-    conn.commit()
-    conn.close()
-    
-    return jsonify({
-        'id': task_id,
-        'title': new_title,
-        'done': bool(new_done)
-    }), 200
+    with db() as conn:
+        row = conn.execute('SELECT id, title, done FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if row is None:
+            return jsonify({"error": f"Task {task_id} not found"}), 404
+
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "Request body must be JSON"}), 400
+
+        new_title = row['title']
+        new_done = bool(row['done'])
+
+        if 'title' in data:
+            title = data['title']
+            if not isinstance(title, str) or not title.strip():
+                return jsonify({"error": "Title cannot be empty or whitespace"}), 400
+            new_title = title.strip()
+
+        if 'done' in data:
+            if not isinstance(data['done'], bool):
+                return jsonify({"error": "Done must be a boolean (true/false)"}), 400
+            new_done = data['done']
+
+        conn.execute(
+            'UPDATE tasks SET title = ?, done = ? WHERE id = ?',
+            (new_title, int(new_done), task_id),
+        )
+    return jsonify({'id': task_id, 'title': new_title, 'done': new_done}), 200
 
 
 @app.route('/tasks/<int:task_id>', methods=['DELETE'])
@@ -368,19 +352,11 @@ def delete_task(task_id):
           example:
             error: "Task 999 not found"
     """
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM tasks WHERE id = ?', (task_id,))
-    row = cursor.fetchone()
-    
-    if row is None:
-        conn.close()
-        return jsonify({"error": f"Task {task_id} not found"}), 404
-    
-    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
-    conn.commit()
-    conn.close()
-    
+    with db() as conn:
+        row = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if row is None:
+            return jsonify({"error": f"Task {task_id} not found"}), 404
+        conn.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
     return '', 204
 
 
