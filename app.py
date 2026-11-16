@@ -117,17 +117,11 @@ def get_all_tasks():
               title: "Buy milk"
               done: false
     """
-    conn = sqlite3.connect('tasks.db')
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, title, done FROM tasks ORDER BY id')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    tasks = [dict(row) for row in rows]
-    return jsonify(tasks)
-
-
+    with db() as conn:
+        rows = conn.execute('SELECT * FROM tasks ORDER BY id').fetchall()
+    return jsonify([row_to_task(r) for r in rows]), 200
+  
+  
 @app.route('/tasks/<int:task_id>', methods=['GET'])
 def get_task(task_id):
     """
@@ -165,17 +159,12 @@ def get_task(task_id):
           example:
             error: "Task 999 not found"
     """
-    conn = sqlite3.connect('tasks.db')
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, title, done FROM tasks WHERE id = ?', (task_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
+    with db() as conn:
+        row = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+
     if row is None:
-        return jsonify({"error": f"Task {task_id} not found"}), 404
-    
-    return jsonify(dict(row))
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify(row_to_task(row)), 200
 
 
 @app.route('/tasks', methods=['POST'])
