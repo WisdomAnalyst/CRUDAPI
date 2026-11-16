@@ -225,8 +225,18 @@ def create_task():
             error:
               type: string
     """
-    # We'll fill this in next
-    pass
+    data = request.get_json(silent=True) or {}
+    title = data.get('title')
+    if not isinstance(title, str) or not title.strip():
+        return jsonify({"error": "Title is required"}), 400
+    title = title.strip()
+    if len(title) > MAX_TITLE_LENGTH:
+        return jsonify({"error": f"Title must be {MAX_TITLE_LENGTH} characters or fewer"}), 400
+
+    with db() as conn:
+        cursor = conn.execute('INSERT INTO tasks (title, done) VALUES (?, ?)', (title, 0))
+        new_id = cursor.lastrowid
+    return jsonify({"id": new_id, "title": title, "done": False}), 201
 
 @app.route('/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
