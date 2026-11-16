@@ -1,41 +1,50 @@
-from flask import Flask, jsonify, request
-from flasgger import Swagger
+import os
 import sqlite3
 from contextlib import contextmanager
+from flask import Flask, jsonify, request
+from flasgger import Swagger
 
 app = Flask(__name__)
 swagger = Swagger(app)
-
-# ADD THIS LINE:
 MAX_TITLE_LENGTH = 200
 
+# Stage 0: absolute path, so tasks.db always lives next to app.py
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tasks.db')
+
+def get_conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@contextmanager
+def db():
+    """Commit on success, roll back on error, always close the connection."""
+    conn = get_conn()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+def row_to_task(row):
+    """Convert a database row to the API shape (done as true/false)."""
+    return {'id': row['id'], 'title': row['title'], 'done': bool(row['done'])}
+
 def init_db():
-    """Initialize the database with tasks table and sample data"""
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            done BOOLEAN DEFAULT 0
-        )
-    ''')
-    
-    # Count rows first
-    cursor.execute('SELECT COUNT(*) FROM tasks')
-    if cursor.fetchone()[0] == 0: 
-        cursor.executemany(
-            'INSERT INTO tasks (title, done) VALUES (?, ?)',
-            [
-                ('Buy milk', 0),
-                ('Walk the dog', 1),
-                ('Do homework', 0)
-            ]
-        )
-    
-    conn.commit()
-    conn.close()
+    with db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                done INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1))
+            )
+        ''')
+        count = conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
+        if count == 0:  # seed only on an empty table
+            conn.executemany(
+                'INSERT INTO tasks (title, done) VALUES (?, ?)',
+                [('Buy milk', 0), ('Walk the dog', 1), ('Do homework', 0)],
+            )
 
 init_db()
 

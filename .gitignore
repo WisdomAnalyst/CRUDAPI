@@ -16,3 +16,8 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+tasks.db
+*.db
+.venv/
+tasks.db
+__pycache__/
